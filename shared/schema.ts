@@ -77,14 +77,30 @@ export const complianceRules = pgTable("compliance_rules", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Documents table
+export const documents = pgTable("documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  type: text("type").notNull(), // inspection_report, compliance_certificate, maintenance_record, safety_manual
+  inspectionId: varchar("inspection_id").references(() => inspections.id),
+  buildingId: varchar("building_id").references(() => buildings.id),
+  uploadedBy: varchar("uploaded_by").notNull().references(() => users.id),
+  fileUrl: text("file_url").notNull(),
+  fileSize: integer("file_size").notNull(),
+  status: text("status").notNull().default("active"), // active, archived, expired
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   inspections: many(inspections),
+  documents: many(documents),
 }));
 
 export const buildingsRelations = relations(buildings, ({ many }) => ({
   equipment: many(equipment),
   inspections: many(inspections),
+  documents: many(documents),
 }));
 
 export const equipmentRelations = relations(equipment, ({ one, many }) => ({
@@ -105,6 +121,7 @@ export const inspectionsRelations = relations(inspections, ({ one, many }) => ({
     references: [users.id],
   }),
   items: many(inspectionItems),
+  documents: many(documents),
 }));
 
 export const inspectionItemsRelations = relations(inspectionItems, ({ one }) => ({
@@ -115,6 +132,21 @@ export const inspectionItemsRelations = relations(inspectionItems, ({ one }) => 
   equipment: one(equipment, {
     fields: [inspectionItems.equipmentId],
     references: [equipment.id],
+  }),
+}));
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  uploader: one(users, {
+    fields: [documents.uploadedBy],
+    references: [users.id],
+  }),
+  building: one(buildings, {
+    fields: [documents.buildingId],
+    references: [buildings.id],
+  }),
+  inspection: one(inspections, {
+    fields: [documents.inspectionId],
+    references: [inspections.id],
   }),
 }));
 
@@ -170,6 +202,17 @@ export const insertComplianceRuleSchema = createInsertSchema(complianceRules).pi
   isActive: true,
 });
 
+export const insertDocumentSchema = createInsertSchema(documents).pick({
+  title: true,
+  type: true,
+  inspectionId: true,
+  buildingId: true,
+  uploadedBy: true,
+  fileUrl: true,
+  fileSize: true,
+  status: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -183,3 +226,5 @@ export type InspectionItem = typeof inspectionItems.$inferSelect;
 export type InsertInspectionItem = z.infer<typeof insertInspectionItemSchema>;
 export type ComplianceRule = typeof complianceRules.$inferSelect;
 export type InsertComplianceRule = z.infer<typeof insertComplianceRuleSchema>;
+export type Document = typeof documents.$inferSelect;
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;

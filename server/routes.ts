@@ -4,7 +4,7 @@ import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { 
   insertBuildingSchema, insertEquipmentSchema, insertInspectionSchema,
-  insertInspectionItemSchema, insertComplianceRuleSchema
+  insertInspectionItemSchema, insertComplianceRuleSchema, insertDocumentSchema
 } from "@shared/schema";
 import { generateInspectionReport, generateComplianceReport } from "./services/pdfService";
 import {
@@ -253,6 +253,126 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting compliance rule:", error);
       res.status(500).json({ error: "Failed to delete compliance rule" });
+    }
+  });
+
+  // Documents API
+  app.get("/api/documents", async (req, res) => {
+    try {
+      const documents = await storage.getAllDocuments();
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      res.status(500).json({ error: "Failed to fetch documents" });
+    }
+  });
+
+  app.get("/api/documents/:id", async (req, res) => {
+    try {
+      const document = await storage.getDocument(req.params.id);
+      if (!document) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      res.json(document);
+    } catch (error) {
+      console.error("Error fetching document:", error);
+      res.status(500).json({ error: "Failed to fetch document" });
+    }
+  });
+
+  app.post("/api/documents", async (req, res) => {
+    try {
+      const validatedData = insertDocumentSchema.parse(req.body);
+      const document = await storage.createDocument(validatedData);
+      res.status(201).json(document);
+    } catch (error) {
+      console.error("Error creating document:", error);
+      res.status(400).json({ error: "Failed to create document" });
+    }
+  });
+
+  app.put("/api/documents/:id", async (req, res) => {
+    try {
+      const validatedData = insertDocumentSchema.partial().parse(req.body);
+      const document = await storage.updateDocument(req.params.id, validatedData);
+      if (!document) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      res.json(document);
+    } catch (error) {
+      console.error("Error updating document:", error);
+      res.status(400).json({ error: "Failed to update document" });
+    }
+  });
+
+  app.put("/api/documents", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.sendStatus(401);
+    }
+
+    const { fileURL, documentType = "safety_manual", title, buildingId, inspectionId } = req.body;
+    
+    if (!fileURL || !title) {
+      return res.status(400).json({ error: "fileURL and title are required" });
+    }
+
+    try {
+      const userId = req.user?.id;
+      const objectStorageService = new ObjectStorageService();
+      
+      // Set ACL policy for the uploaded document
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        fileURL,
+        {
+          owner: userId,
+          visibility: "private", // Documents should be private by default
+          aclRules: []
+        },
+      );
+
+      // Create document record in database
+      const document = await storage.createDocument({
+        title,
+        type: documentType,
+        buildingId: buildingId || null,
+        inspectionId: inspectionId || null,
+        uploadedBy: userId!,
+        fileUrl: objectPath,
+        fileSize: 0, // Could be extracted from file metadata if needed
+        status: "active"
+      });
+
+      res.status(200).json({
+        objectPath: objectPath,
+        document: document
+      });
+    } catch (error) {
+      console.error("Error setting document ACL:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/documents/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteDocument(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+      res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ error: "Failed to delete document" });
+    }
+  });
+
+  // Users API
+  app.get("/api/users", async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
     }
   });
 

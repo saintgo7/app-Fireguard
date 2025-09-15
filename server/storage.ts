@@ -1,8 +1,9 @@
 import { 
-  users, buildings, equipment, inspections, inspectionItems, complianceRules,
+  users, buildings, equipment, inspections, inspectionItems, complianceRules, documents,
   type User, type InsertUser, type Building, type InsertBuilding,
   type Equipment, type InsertEquipment, type Inspection, type InsertInspection,
-  type InspectionItem, type InsertInspectionItem, type ComplianceRule, type InsertComplianceRule
+  type InspectionItem, type InsertInspectionItem, type ComplianceRule, type InsertComplianceRule,
+  type Document, type InsertDocument
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, count } from "drizzle-orm";
@@ -53,6 +54,18 @@ export interface IStorage {
   createComplianceRule(rule: InsertComplianceRule): Promise<ComplianceRule>;
   updateComplianceRule(id: string, rule: Partial<InsertComplianceRule>): Promise<ComplianceRule | undefined>;
   deleteComplianceRule(id: string): Promise<boolean>;
+
+  // Documents
+  getAllDocuments(): Promise<Document[]>;
+  getDocument(id: string): Promise<Document | undefined>;
+  getDocumentsByBuilding(buildingId: string): Promise<Document[]>;
+  getDocumentsByInspection(inspectionId: string): Promise<Document[]>;
+  createDocument(document: InsertDocument): Promise<Document>;
+  updateDocument(id: string, document: Partial<InsertDocument>): Promise<Document | undefined>;
+  deleteDocument(id: string): Promise<boolean>;
+
+  // Users
+  getAllUsers(): Promise<User[]>;
 
   // Dashboard stats
   getDashboardStats(): Promise<{
@@ -259,6 +272,51 @@ export class DatabaseStorage implements IStorage {
   async deleteComplianceRule(id: string): Promise<boolean> {
     const result = await db.delete(complianceRules).where(eq(complianceRules.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Documents
+  async getAllDocuments(): Promise<Document[]> {
+    return await db.select().from(documents).orderBy(desc(documents.createdAt));
+  }
+
+  async getDocument(id: string): Promise<Document | undefined> {
+    const [document] = await db.select().from(documents).where(eq(documents.id, id));
+    return document || undefined;
+  }
+
+  async getDocumentsByBuilding(buildingId: string): Promise<Document[]> {
+    return await db.select().from(documents).where(eq(documents.buildingId, buildingId));
+  }
+
+  async getDocumentsByInspection(inspectionId: string): Promise<Document[]> {
+    return await db.select().from(documents).where(eq(documents.inspectionId, inspectionId));
+  }
+
+  async createDocument(insertDocument: InsertDocument): Promise<Document> {
+    const [document] = await db
+      .insert(documents)
+      .values(insertDocument)
+      .returning();
+    return document;
+  }
+
+  async updateDocument(id: string, updateDocument: Partial<InsertDocument>): Promise<Document | undefined> {
+    const [document] = await db
+      .update(documents)
+      .set(updateDocument)
+      .where(eq(documents.id, id))
+      .returning();
+    return document || undefined;
+  }
+
+  async deleteDocument(id: string): Promise<boolean> {
+    const result = await db.delete(documents).where(eq(documents.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Users
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
   }
 
   // Dashboard stats
