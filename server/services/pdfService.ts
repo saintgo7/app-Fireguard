@@ -17,7 +17,18 @@ interface ComplianceReportData {
 }
 
 export async function generateInspectionReport(data: InspectionReportData): Promise<Buffer> {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({ 
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu'
+    ]
+  });
   const page = await browser.newPage();
 
   const html = `
@@ -189,7 +200,18 @@ export async function generateInspectionReport(data: InspectionReportData): Prom
 }
 
 export async function generateComplianceReport(data: ComplianceReportData): Promise<Buffer> {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({ 
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu'
+    ]
+  });
   const page = await browser.newPage();
 
   const filteredInspections = data.inspections.filter(inspection => {
