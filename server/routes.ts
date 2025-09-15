@@ -1,0 +1,286 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { setupAuth } from "./auth";
+import { storage } from "./storage";
+import { 
+  insertBuildingSchema, insertEquipmentSchema, insertInspectionSchema,
+  insertInspectionItemSchema, insertComplianceRuleSchema
+} from "@shared/schema";
+import { generateInspectionReport, generateComplianceReport } from "./services/pdfService";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup authentication
+  setupAuth(app);
+
+  // Dashboard stats
+  app.get("/api/dashboard/stats", async (req, res) => {
+    try {
+      const stats = await storage.getDashboardStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching dashboard stats:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard stats" });
+    }
+  });
+
+  // Buildings API
+  app.get("/api/buildings", async (req, res) => {
+    try {
+      const buildings = await storage.getAllBuildings();
+      res.json(buildings);
+    } catch (error) {
+      console.error("Error fetching buildings:", error);
+      res.status(500).json({ error: "Failed to fetch buildings" });
+    }
+  });
+
+  app.get("/api/buildings/:id", async (req, res) => {
+    try {
+      const building = await storage.getBuilding(req.params.id);
+      if (!building) {
+        return res.status(404).json({ error: "Building not found" });
+      }
+      res.json(building);
+    } catch (error) {
+      console.error("Error fetching building:", error);
+      res.status(500).json({ error: "Failed to fetch building" });
+    }
+  });
+
+  app.post("/api/buildings", async (req, res) => {
+    try {
+      const validatedData = insertBuildingSchema.parse(req.body);
+      const building = await storage.createBuilding(validatedData);
+      res.status(201).json(building);
+    } catch (error) {
+      console.error("Error creating building:", error);
+      res.status(400).json({ error: "Failed to create building" });
+    }
+  });
+
+  app.put("/api/buildings/:id", async (req, res) => {
+    try {
+      const validatedData = insertBuildingSchema.partial().parse(req.body);
+      const building = await storage.updateBuilding(req.params.id, validatedData);
+      if (!building) {
+        return res.status(404).json({ error: "Building not found" });
+      }
+      res.json(building);
+    } catch (error) {
+      console.error("Error updating building:", error);
+      res.status(400).json({ error: "Failed to update building" });
+    }
+  });
+
+  app.delete("/api/buildings/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteBuilding(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Building not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting building:", error);
+      res.status(500).json({ error: "Failed to delete building" });
+    }
+  });
+
+  // Equipment API
+  app.get("/api/equipment", async (req, res) => {
+    try {
+      const equipment = await storage.getAllEquipment();
+      res.json(equipment);
+    } catch (error) {
+      console.error("Error fetching equipment:", error);
+      res.status(500).json({ error: "Failed to fetch equipment" });
+    }
+  });
+
+  app.get("/api/equipment/building/:buildingId", async (req, res) => {
+    try {
+      const equipment = await storage.getEquipmentByBuilding(req.params.buildingId);
+      res.json(equipment);
+    } catch (error) {
+      console.error("Error fetching equipment by building:", error);
+      res.status(500).json({ error: "Failed to fetch equipment" });
+    }
+  });
+
+  app.post("/api/equipment", async (req, res) => {
+    try {
+      const validatedData = insertEquipmentSchema.parse(req.body);
+      const equipment = await storage.createEquipment(validatedData);
+      res.status(201).json(equipment);
+    } catch (error) {
+      console.error("Error creating equipment:", error);
+      res.status(400).json({ error: "Failed to create equipment" });
+    }
+  });
+
+  app.put("/api/equipment/:id", async (req, res) => {
+    try {
+      const validatedData = insertEquipmentSchema.partial().parse(req.body);
+      const equipment = await storage.updateEquipment(req.params.id, validatedData);
+      if (!equipment) {
+        return res.status(404).json({ error: "Equipment not found" });
+      }
+      res.json(equipment);
+    } catch (error) {
+      console.error("Error updating equipment:", error);
+      res.status(400).json({ error: "Failed to update equipment" });
+    }
+  });
+
+  // Inspections API
+  app.get("/api/inspections", async (req, res) => {
+    try {
+      const inspections = await storage.getAllInspections();
+      res.json(inspections);
+    } catch (error) {
+      console.error("Error fetching inspections:", error);
+      res.status(500).json({ error: "Failed to fetch inspections" });
+    }
+  });
+
+  app.get("/api/inspections/:id", async (req, res) => {
+    try {
+      const inspection = await storage.getInspection(req.params.id);
+      if (!inspection) {
+        return res.status(404).json({ error: "Inspection not found" });
+      }
+      res.json(inspection);
+    } catch (error) {
+      console.error("Error fetching inspection:", error);
+      res.status(500).json({ error: "Failed to fetch inspection" });
+    }
+  });
+
+  app.post("/api/inspections", async (req, res) => {
+    try {
+      const validatedData = insertInspectionSchema.parse(req.body);
+      const inspection = await storage.createInspection(validatedData);
+      res.status(201).json(inspection);
+    } catch (error) {
+      console.error("Error creating inspection:", error);
+      res.status(400).json({ error: "Failed to create inspection" });
+    }
+  });
+
+  app.put("/api/inspections/:id", async (req, res) => {
+    try {
+      const validatedData = insertInspectionSchema.partial().parse(req.body);
+      const inspection = await storage.updateInspection(req.params.id, validatedData);
+      if (!inspection) {
+        return res.status(404).json({ error: "Inspection not found" });
+      }
+      res.json(inspection);
+    } catch (error) {
+      console.error("Error updating inspection:", error);
+      res.status(400).json({ error: "Failed to update inspection" });
+    }
+  });
+
+  // Inspection Items API
+  app.get("/api/inspections/:id/items", async (req, res) => {
+    try {
+      const items = await storage.getInspectionItems(req.params.id);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching inspection items:", error);
+      res.status(500).json({ error: "Failed to fetch inspection items" });
+    }
+  });
+
+  app.post("/api/inspection-items", async (req, res) => {
+    try {
+      const validatedData = insertInspectionItemSchema.parse(req.body);
+      const item = await storage.createInspectionItem(validatedData);
+      res.status(201).json(item);
+    } catch (error) {
+      console.error("Error creating inspection item:", error);
+      res.status(400).json({ error: "Failed to create inspection item" });
+    }
+  });
+
+  // Compliance Rules API
+  app.get("/api/compliance-rules", async (req, res) => {
+    try {
+      const rules = await storage.getAllComplianceRules();
+      res.json(rules);
+    } catch (error) {
+      console.error("Error fetching compliance rules:", error);
+      res.status(500).json({ error: "Failed to fetch compliance rules" });
+    }
+  });
+
+  app.post("/api/compliance-rules", async (req, res) => {
+    try {
+      const validatedData = insertComplianceRuleSchema.parse(req.body);
+      const rule = await storage.createComplianceRule(validatedData);
+      res.status(201).json(rule);
+    } catch (error) {
+      console.error("Error creating compliance rule:", error);
+      res.status(400).json({ error: "Failed to create compliance rule" });
+    }
+  });
+
+  // Report Generation API
+  app.post("/api/reports/inspection/:id", async (req, res) => {
+    try {
+      const inspection = await storage.getInspection(req.params.id);
+      if (!inspection) {
+        return res.status(404).json({ error: "Inspection not found" });
+      }
+
+      const building = await storage.getBuilding(inspection.buildingId);
+      const inspector = await storage.getUser(inspection.inspectorId);
+      const items = await storage.getInspectionItems(inspection.id);
+
+      if (!building || !inspector) {
+        return res.status(404).json({ error: "Required data not found" });
+      }
+
+      const pdfBuffer = await generateInspectionReport({
+        inspection,
+        building,
+        inspector,
+        items,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="inspection-report-${inspection.id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating inspection report:", error);
+      res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  app.post("/api/reports/compliance", async (req, res) => {
+    try {
+      const { buildingId, startDate, endDate } = req.body;
+      
+      const building = buildingId ? await storage.getBuilding(buildingId) : null;
+      const inspections = await storage.getAllInspections();
+      const rules = await storage.getAllComplianceRules();
+
+      const pdfBuffer = await generateComplianceReport({
+        building,
+        inspections,
+        rules,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+      });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="compliance-report.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating compliance report:", error);
+      res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
