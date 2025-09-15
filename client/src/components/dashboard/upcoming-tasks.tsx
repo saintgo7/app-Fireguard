@@ -1,32 +1,53 @@
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import type { Inspection, Building } from "@shared/schema";
 
 export default function UpcomingTasks() {
-  const tasks = [
-    {
-      title: "소화기 정기점검",
-      location: "강남타워 B동",
-      dueDate: "2024-01-20",
-      priority: "high"
-    },
-    {
-      title: "스프링클러 시스템 점검",
-      location: "서초빌딩 전층",
-      dueDate: "2024-01-22",
-      priority: "medium"
-    },
-    {
-      title: "화재 경보기 배터리 교체",
-      location: "역삼센터 3층",
-      dueDate: "2024-01-25",
-      priority: "low"
-    },
-    {
-      title: "비상구 표시등 점검",
-      location: "테헤란로 빌딩",
-      dueDate: "2024-01-28",
-      priority: "medium"
+  const { data: inspections, isLoading: inspectionsLoading } = useQuery<Inspection[]>({
+    queryKey: ["/api/inspections"],
+  });
+
+  const { data: buildings } = useQuery<Building[]>({
+    queryKey: ["/api/buildings"],
+  });
+
+  const upcomingInspections = inspections?.filter(inspection => {
+    const scheduledDate = new Date(inspection.scheduledDate);
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+    
+    return inspection.status === "scheduled" && 
+           scheduledDate >= today && 
+           scheduledDate <= nextWeek;
+  }).sort((a, b) => 
+    new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime()
+  ).slice(0, 4) || [];
+
+  const getTaskTitle = (inspection: Inspection) => {
+    switch (inspection.type) {
+      case "routine": return "정기점검";
+      case "regular": return "정기점검"; // Handle actual data value
+      case "emergency": return "긴급점검";
+      case "annual": return "연간점검";
+      default: return "점검";
     }
-  ];
+  };
+
+  const getBuildingName = (buildingId: string) => {
+    const building = buildings?.find(b => b.id === buildingId);
+    return building?.name || "알 수 없는 건물";
+  };
+
+  const getTaskPriority = (inspection: Inspection) => {
+    const scheduledDate = new Date(inspection.scheduledDate);
+    const today = new Date();
+    const daysDiff = Math.ceil((scheduledDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff <= 1) return "high";
+    if (daysDiff <= 3) return "medium";
+    return "low";
+  };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -41,22 +62,52 @@ export default function UpcomingTasks() {
     }
   };
 
+  if (inspectionsLoading) {
+    return (
+      <Card>
+        <CardHeader className="border-b border-border">
+          <h3 className="text-lg font-semibold text-foreground">예정된 작업</h3>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          {[...Array(4)].map((_, index) => (
+            <div key={index} className="animate-pulse">
+              <div className="h-12 bg-muted rounded"></div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader className="border-b border-border">
         <h3 className="text-lg font-semibold text-foreground">예정된 작업</h3>
       </CardHeader>
       <CardContent className="p-6 space-y-4">
-        {tasks.map((task, index) => (
-          <div key={index} className="flex items-start space-x-3" data-testid={`task-item-${index}`}>
-            <div className={`w-2 h-2 ${getPriorityColor(task.priority)} rounded-full mt-2 flex-shrink-0`}></div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-foreground">{task.title}</p>
-              <p className="text-xs text-muted-foreground">{task.location}</p>
-              <p className="text-xs text-muted-foreground">마감: {task.dueDate}</p>
-            </div>
+        {upcomingInspections.length === 0 ? (
+          <div className="text-center py-4">
+            <p className="text-sm text-muted-foreground">예정된 점검이 없습니다</p>
           </div>
-        ))}
+        ) : (
+          upcomingInspections.map((inspection, index) => {
+            const priority = getTaskPriority(inspection);
+            const scheduledDate = new Date(inspection.scheduledDate);
+            
+            return (
+              <div key={inspection.id} className="flex items-start space-x-3" data-testid={`task-item-${index}`}>
+                <div className={`w-2 h-2 ${getPriorityColor(priority)} rounded-full mt-2 flex-shrink-0`}></div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">{getTaskTitle(inspection)}</p>
+                  <p className="text-xs text-muted-foreground">{getBuildingName(inspection.buildingId)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    예정일: {scheduledDate.toLocaleDateString('ko-KR')}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
       </CardContent>
     </Card>
   );
