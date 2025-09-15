@@ -20,7 +20,7 @@ localPort = 33271
 externalPort = 3000
 
 [[ports]]
-localPort = 34219
+localPort = 36201
 externalPort = 3002
 
 [[ports]]
@@ -53,3 +53,6 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-294096d6-54cf-48a0-b99a-72f91b91b98c"
