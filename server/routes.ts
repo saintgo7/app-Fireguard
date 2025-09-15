@@ -7,6 +7,11 @@ import {
   insertInspectionItemSchema, insertComplianceRuleSchema
 } from "@shared/schema";
 import { generateInspectionReport, generateComplianceReport } from "./services/pdfService";
+import {
+  ObjectStorageService,
+  ObjectNotFoundError,
+} from "./objectStorage";
+import { ObjectPermission } from "./objectAcl";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication
@@ -305,6 +310,106 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error generating compliance report:", error);
       res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  // Object Storage endpoints for file uploads (protected)
+  
+  // Serve public objects - no authentication required
+  app.get("/public-objects/:filePath(*)", async (req, res) => {
+    const filePath = req.params.filePath;
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const file = await objectStorageService.searchPublicObject(filePath);
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      objectStorageService.downloadObject(file, res);
+    } catch (error) {
+      console.error("Error searching for public object:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Serve private objects with access control
+  app.get("/objects/:objectPath(*)", async (req, res) => {
+    const objectStorageService = new ObjectStorageService();
+    try {
+      const objectFile = await objectStorageService.getObjectEntityFile(
+        req.path,
+      );
+      
+      // Get user ID from session if authenticated
+      const userId = req.isAuthenticated() ? req.user?.id : undefined;
+      
+      const canAccess = await objectStorageService.canAccessObjectEntity({
+        objectFile,
+        userId: userId,
+        requestedPermission: ObjectPermission.READ,
+      });
+      
+      if (!canAccess) {
+        return res.sendStatus(401);
+      }
+      
+      objectStorageService.downloadObject(objectFile, res);
+    } catch (error) {
+      console.error("Error checking object access:", error);
+      if (error instanceof ObjectNotFoundError) {
+        return res.sendStatus(404);
+      }
+      return res.sendStatus(500);
+    }
+  });
+
+  // Get upload URL for file upload
+  app.post("/api/objects/upload", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.sendStatus(401);
+    }
+    
+    try {
+      const objectStorageService = new ObjectStorageService();
+      const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+      res.json({ uploadURL });
+    } catch (error) {
+      console.error("Error getting upload URL:", error);
+      res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  // Update ACL policy after upload for inspection photos
+  app.put("/api/inspection-photos", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.sendStatus(401);
+    }
+    
+    if (!req.body.photoURL || !req.body.inspectionId) {
+      return res.status(400).json({ error: "photoURL and inspectionId are required" });
+    }
+
+    try {
+      const userId = req.user?.id;
+      const objectStorageService = new ObjectStorageService();
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        req.body.photoURL,
+        {
+          owner: userId,
+          visibility: "private", // Inspection photos should be private
+          aclRules: []
+        },
+      );
+
+      // Store the photo reference in inspection items if needed
+      // This could be extended to link to inspection items table
+      
+      res.status(200).json({
+        objectPath: objectPath,
+        inspectionId: req.body.inspectionId
+      });
+    } catch (error) {
+      console.error("Error setting inspection photo:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 

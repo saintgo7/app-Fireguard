@@ -15,6 +15,7 @@ import Compliance from "@/pages/compliance";
 import Reports from "@/pages/reports";
 import Documents from "@/pages/documents";
 import Inspectors from "@/pages/inspectors";
+import InspectionForm from "@/pages/inspection-form";
 
 function Router() {
   return (
@@ -27,6 +28,7 @@ function Router() {
       <ProtectedRoute path="/reports" component={Reports} />
       <ProtectedRoute path="/documents" component={Documents} />
       <ProtectedRoute path="/inspectors" component={Inspectors} />
+      <ProtectedRoute path="/inspections/new" component={InspectionForm} />
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
