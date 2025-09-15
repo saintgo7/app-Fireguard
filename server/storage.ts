@@ -231,7 +231,7 @@ export class DatabaseStorage implements IStorage {
 
   // Compliance Rules
   async getAllComplianceRules(): Promise<ComplianceRule[]> {
-    return await db.select().from(complianceRules).where(eq(complianceRules.isActive, true));
+    return await db.select().from(complianceRules).orderBy(desc(complianceRules.createdAt));
   }
 
   async getComplianceRule(id: string): Promise<ComplianceRule | undefined> {

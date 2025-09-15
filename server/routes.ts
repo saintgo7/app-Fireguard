@@ -224,6 +224,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/compliance-rules/:id", async (req, res) => {
+    try {
+      const validatedData = insertComplianceRuleSchema.partial().parse(req.body);
+      const rule = await storage.updateComplianceRule(req.params.id, validatedData);
+      if (!rule) {
+        return res.status(404).json({ error: "Compliance rule not found" });
+      }
+      res.json(rule);
+    } catch (error) {
+      console.error("Error updating compliance rule:", error);
+      res.status(400).json({ error: "Failed to update compliance rule" });
+    }
+  });
+
+  app.delete("/api/compliance-rules/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteComplianceRule(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Compliance rule not found" });
+      }
+      res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting compliance rule:", error);
+      res.status(500).json({ error: "Failed to delete compliance rule" });
+    }
+  });
+
   // Report Generation API
   app.post("/api/reports/inspection/:id", async (req, res) => {
     try {
