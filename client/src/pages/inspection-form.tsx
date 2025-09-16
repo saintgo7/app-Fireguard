@@ -15,8 +15,9 @@ import { ObjectUploader } from "@/components/ObjectUploader";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, Camera, Upload } from "lucide-react";
+import { ArrowLeft, Camera, Upload, PenTool } from "lucide-react";
 import { Link } from "wouter";
+import { SignatureCapture, SignatureDisplay } from "@/components/SignatureCapture";
 import type { UploadResult } from "@uppy/core";
 
 const inspectionFormSchema = insertInspectionSchema.extend({
@@ -27,6 +28,8 @@ type InspectionFormData = z.infer<typeof inspectionFormSchema>;
 
 export default function InspectionForm() {
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
+  const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [showSignatureCapture, setShowSignatureCapture] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -38,6 +41,7 @@ export default function InspectionForm() {
       scheduledDate: new Date(),
       notes: "",
       photos: [],
+      signatureUrl: "",
     },
   });
 
@@ -46,13 +50,59 @@ export default function InspectionForm() {
     queryKey: ["/api/buildings"],
   });
 
+  // Upload signature to object storage
+  const uploadSignature = async (signatureDataUrl: string, inspectionId?: string): Promise<string> => {
+    // Convert data URL to blob
+    const response = await fetch(signatureDataUrl);
+    const blob = await response.blob();
+    
+    // Get upload URL
+    const uploadParams = await apiRequest("POST", "/api/objects/upload").then(res => res.json());
+    
+    // Upload to object storage
+    const uploadResponse = await fetch(uploadParams.uploadURL, {
+      method: "PUT",
+      body: blob,
+      headers: {
+        'Content-Type': 'image/png'
+      }
+    });
+    
+    if (!uploadResponse.ok) {
+      throw new Error('Failed to upload signature');
+    }
+    
+    const uploadUrl = uploadParams.uploadURL.split('?')[0]; // Remove query params
+    
+    // Always set ACL policy for signature security (signatures must be private)
+    await apiRequest("PUT", "/api/inspection-signatures", {
+      signatureURL: uploadUrl,
+      inspectionId: inspectionId || null
+    });
+    
+    return uploadUrl;
+  };
+
   // Create inspection mutation
   const createInspectionMutation = useMutation({
     mutationFn: async (data: InspectionFormData) => {
+      let signatureUrl = "";
+      
+      // Upload signature if provided
+      if (signatureDataUrl) {
+        try {
+          signatureUrl = await uploadSignature(signatureDataUrl);
+        } catch (error) {
+          console.error('Failed to upload signature:', error);
+          throw new Error('서명 업로드에 실패했습니다.');
+        }
+      }
+      
       const inspectionData = {
         ...data,
         inspectorId: user?.id || "",
         photos: uploadedPhotos,
+        signatureUrl,
       };
       const response = await apiRequest("POST", "/api/inspections", inspectionData);
       return response.json();
@@ -65,6 +115,8 @@ export default function InspectionForm() {
       });
       form.reset();
       setUploadedPhotos([]);
+      setSignatureDataUrl(null);
+      setShowSignatureCapture(false);
     },
     onError: () => {
       toast({
@@ -286,6 +338,69 @@ export default function InspectionForm() {
               <p>• 최대 5개의 사진을 업로드할 수 있습니다</p>
               <p>• 파일 크기는 10MB 이하여야 합니다</p>
               <p>• JPG, PNG 형식을 지원합니다</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Digital Signature Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PenTool className="h-5 w-5" />
+              점검자 서명
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!signatureDataUrl && !showSignatureCapture && (
+              <div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowSignatureCapture(true)}
+                  className="w-full"
+                  data-testid="button-add-signature"
+                >
+                  <PenTool className="h-4 w-4 mr-2" />
+                  서명 추가
+                </Button>
+                <p className="text-sm text-gray-600 mt-2">
+                  점검 완료 후 디지털 서명을 추가하세요
+                </p>
+              </div>
+            )}
+
+            {showSignatureCapture && !signatureDataUrl && (
+              <SignatureCapture
+                title="점검자 서명"
+                onSave={(dataUrl) => {
+                  setSignatureDataUrl(dataUrl);
+                  setShowSignatureCapture(false);
+                }}
+                onCancel={() => setShowSignatureCapture(false)}
+                width={400}
+                height={150}
+              />
+            )}
+
+            {signatureDataUrl && (
+              <SignatureDisplay
+                signatureUrl={signatureDataUrl}
+                title="점검자 서명"
+                onEdit={() => {
+                  setSignatureDataUrl(null);
+                  setShowSignatureCapture(true);
+                }}
+                onRemove={() => {
+                  setSignatureDataUrl(null);
+                  setShowSignatureCapture(false);
+                }}
+              />
+            )}
+
+            <div className="text-sm text-gray-600">
+              <p>• 디지털 서명은 점검 보고서의 신뢰성을 높입니다</p>
+              <p>• 서명은 안전하게 암호화되어 저장됩니다</p>
+              <p>• 터치스크린이나 마우스로 서명 가능합니다</p>
             </div>
           </CardContent>
         </Card>

@@ -51,6 +51,7 @@ export const inspections = pgTable("inspections", {
   completedDate: timestamp("completed_date"),
   status: text("status").notNull().default("scheduled"), // scheduled, in_progress, completed, overdue
   reportUrl: text("report_url"),
+  signatureUrl: text("signature_url"), // Digital signature for completed inspections
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -201,6 +202,9 @@ export const insertInspectionSchema = createInsertSchema(inspections).pick({
   type: true,
   scheduledDate: true,
   notes: true,
+  signatureUrl: true,
+}).partial({
+  signatureUrl: true,
 });
 
 export const insertInspectionItemSchema = createInsertSchema(inspectionItems).pick({

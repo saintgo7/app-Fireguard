@@ -662,6 +662,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update ACL policy after upload for inspection signatures
+  app.put("/api/inspection-signatures", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.sendStatus(401);
+    }
+    
+    if (!req.body.signatureURL) {
+      return res.status(400).json({ error: "signatureURL is required" });
+    }
+
+    try {
+      const userId = req.user?.id;
+      const objectStorageService = new ObjectStorageService();
+      const objectPath = await objectStorageService.trySetObjectEntityAclPolicy(
+        req.body.signatureURL,
+        {
+          owner: userId,
+          visibility: "private", // Inspection signatures should be private
+          aclRules: []
+        },
+      );
+      
+      res.status(200).json({
+        objectPath: objectPath,
+        inspectionId: req.body.inspectionId || null
+      });
+    } catch (error) {
+      console.error("Error setting inspection signature:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
