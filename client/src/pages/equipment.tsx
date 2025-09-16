@@ -11,10 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Package, Edit, Trash, Plus, MapPin, Calendar, Hash, Activity } from "lucide-react";
+import { Package, Edit, Trash, Plus, MapPin, Calendar, Hash, Activity, Camera, Search, X } from "lucide-react";
 import { FireExtinguisher, Droplets, Cigarette, Bell } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { BarcodeScannerButton } from "@/components/BarcodeScanner";
+import { EquipmentBarcodeVerifier } from "@/components/EquipmentBarcodeVerifier";
 import type { Equipment, Building, InsertEquipment } from "@shared/schema";
 
 export default function Equipment() {
@@ -23,13 +25,13 @@ export default function Equipment() {
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
   const [formData, setFormData] = useState<InsertEquipment>({
     buildingId: "",
     type: "extinguisher",
     location: "",
     serialNumber: "",
     installationDate: undefined,
-    lastInspectionDate: undefined,
     status: "active"
   });
 
@@ -94,7 +96,6 @@ export default function Equipment() {
       location: "",
       serialNumber: "",
       installationDate: undefined,
-      lastInspectionDate: undefined,
       status: "active"
     });
     setEditingEquipment(null);
@@ -117,7 +118,6 @@ export default function Equipment() {
       location: equipment.location,
       serialNumber: equipment.serialNumber || "",
       installationDate: equipment.installationDate || undefined,
-      lastInspectionDate: equipment.lastInspectionDate || undefined,
       status: equipment.status
     });
     setIsDialogOpen(true);
@@ -165,8 +165,32 @@ export default function Equipment() {
   const filteredEquipment = equipment?.filter(item => {
     const matchesBuilding = selectedBuilding === "all" || item.buildingId === selectedBuilding;
     const matchesType = selectedType === "all" || item.type === selectedType;
-    return matchesBuilding && matchesType;
+    const matchesSearch = searchTerm === "" || 
+      (item.serialNumber?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      item.location.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesBuilding && matchesType && matchesSearch;
   }) || [];
+
+  // Equipment search by barcode scanning
+  const handleEquipmentSearch = (scannedCode: string) => {
+    const foundEquipment = equipment?.find(item => 
+      item.serialNumber?.toLowerCase() === scannedCode.toLowerCase()
+    );
+    
+    if (foundEquipment) {
+      setSearchTerm(scannedCode);
+      toast({
+        title: "장비 발견",
+        description: `${getTypeLabel(foundEquipment.type)} - ${foundEquipment.location}에서 발견되었습니다.`,
+      });
+    } else {
+      toast({
+        title: "장비를 찾을 수 없음",
+        description: `시리얼 번호 "${scannedCode}"에 해당하는 장비가 없습니다.`,
+        variant: "destructive",
+      });
+    }
+  };
 
   const getEquipmentStats = () => {
     const total = equipment?.length || 0;
@@ -309,13 +333,24 @@ export default function Equipment() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="serialNumber">시리얼 번호</Label>
-                    <Input
-                      id="serialNumber"
-                      data-testid="input-equipment-serial"
-                      value={formData.serialNumber}
-                      onChange={(e) => setFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
-                      placeholder="예: EXT-2024-001"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="serialNumber"
+                        data-testid="input-equipment-serial"
+                        value={formData.serialNumber || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, serialNumber: e.target.value }))}
+                        placeholder="예: EXT-2024-001"
+                        className="flex-1"
+                      />
+                      <BarcodeScannerButton
+                        onScanSuccess={(scannedCode) => {
+                          setFormData(prev => ({ ...prev, serialNumber: scannedCode }));
+                        }}
+                        buttonText="스캔"
+                        size="default"
+                        disabled={createMutation.isPending || updateMutation.isPending}
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="status">상태</Label>
@@ -356,34 +391,85 @@ export default function Equipment() {
             </Dialog>
           </div>
 
-          {/* Filters */}
-          <div className="flex gap-4 mb-6">
-            <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
-              <SelectTrigger className="w-[200px]" data-testid="filter-building">
-                <SelectValue placeholder="건물 선택" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">모든 건물</SelectItem>
-                {buildings?.map((building) => (
-                  <SelectItem key={building.id} value={building.id}>
-                    {building.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger className="w-[200px]" data-testid="filter-type">
-                <SelectValue placeholder="장비 유형" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">모든 유형</SelectItem>
-                {equipmentTypes.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Search and Filters */}
+          <div className="space-y-4 mb-6">
+            {/* Equipment Search */}
+            <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <Label htmlFor="equipment-search" className="text-sm font-medium text-blue-900">
+                      장비 검색 (시리얼 번호 또는 위치)
+                    </Label>
+                    <div className="flex gap-2 mt-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="equipment-search"
+                          data-testid="input-equipment-search"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          placeholder="시리얼 번호나 위치를 입력하세요..."
+                          className="pl-10"
+                        />
+                      </div>
+                      <BarcodeScannerButton
+                        onScanSuccess={handleEquipmentSearch}
+                        buttonText="바코드 검색"
+                        variant="default"
+                        size="default"
+                      />
+                      {searchTerm && (
+                        <Button
+                          variant="outline"
+                          size="default"
+                          onClick={() => setSearchTerm("")}
+                          data-testid="button-clear-search"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {searchTerm && (
+                  <div className="mt-3 text-sm text-blue-700">
+                    검색 결과: <strong>{filteredEquipment.length}개 장비</strong>
+                    {searchTerm && ` "${searchTerm}"에 대한`}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Filters */}
+            <div className="flex gap-4">
+              <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
+                <SelectTrigger className="w-[200px]" data-testid="filter-building">
+                  <SelectValue placeholder="건물 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">모든 건물</SelectItem>
+                  {buildings?.map((building) => (
+                    <SelectItem key={building.id} value={building.id}>
+                      {building.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="w-[200px]" data-testid="filter-type">
+                  <SelectValue placeholder="장비 유형" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">모든 유형</SelectItem>
+                  {equipmentTypes.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {equipmentLoading ? (

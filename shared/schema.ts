@@ -189,7 +189,10 @@ export const insertEquipmentSchema = createInsertSchema(equipment).pick({
   location: true,
   serialNumber: true,
   installationDate: true,
+  lastInspectionDate: true,
   status: true,
+}).partial({
+  lastInspectionDate: true,
 });
 
 export const insertInspectionSchema = createInsertSchema(inspections).pick({
