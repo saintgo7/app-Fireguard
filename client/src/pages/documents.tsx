@@ -27,20 +27,7 @@ import {
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { UploadResult } from "@uppy/core";
-import type { Inspection, Building as BuildingType, User as UserType } from "@shared/schema";
-
-interface Document {
-  id: string;
-  title: string;
-  type: "inspection_report" | "compliance_certificate" | "maintenance_record" | "safety_manual";
-  inspectionId?: string;
-  buildingId?: string;
-  uploadedBy: string;
-  uploadDate: string;
-  fileUrl: string;
-  fileSize: number;
-  status: "active" | "archived" | "expired";
-}
+import type { Inspection, Building as BuildingType, User as UserType, Document } from "@shared/schema";
 
 export default function Documents() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,7 +50,7 @@ export default function Documents() {
   });
 
   // Fetch documents from backend
-  const { data: documents = [] } = useQuery<Document[]>({
+  const { data: documents = [], isLoading: documentsLoading } = useQuery<Document[]>({
     queryKey: ["/api/documents"],
   });
 
@@ -166,21 +153,32 @@ export default function Documents() {
             status: "active",
           }),
         });
-        if (!response.ok) throw new Error('Failed to create document record');
+        
+        if (!response.ok) {
+          throw new Error('Failed to create document record');
+        }
 
         toast({
           title: "성공",
           description: "문서가 성공적으로 업로드되었습니다.",
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+        
+        // Invalidate related queries to refresh the data
+        await queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
       } catch (error) {
-        console.error("Error setting document ACL:", error);
+        console.error("Error creating document record:", error);
         toast({
           title: "오류",
-          description: "문서 업로드 중 오류가 발생했습니다.",
+          description: error instanceof Error ? error.message : "문서 업로드 중 오류가 발생했습니다.",
           variant: "destructive",
         });
       }
+    } else {
+      toast({
+        title: "오류",
+        description: "파일 업로드에 실패했습니다.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -245,6 +243,7 @@ export default function Documents() {
                   onGetUploadParameters={handleGetUploadParameters}
                   onComplete={handleUploadComplete}
                   buttonClassName="flex items-center gap-2"
+                  data-testid="button-upload-document"
                 >
                   <Upload className="h-4 w-4" />
                   문서 업로드
@@ -342,7 +341,7 @@ export default function Documents() {
                             <TableCell>{getBuildingName(doc.buildingId)}</TableCell>
                             <TableCell>{getUserName(doc.uploadedBy)}</TableCell>
                             <TableCell>
-                              {format(new Date(doc.uploadDate), 'yyyy.MM.dd HH:mm', { locale: ko })}
+                              {format(new Date(doc.createdAt), 'yyyy.MM.dd HH:mm', { locale: ko })}
                             </TableCell>
                             <TableCell>{formatFileSize(doc.fileSize)}</TableCell>
                             <TableCell>
