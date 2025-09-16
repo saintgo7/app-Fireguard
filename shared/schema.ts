@@ -160,6 +160,20 @@ export const insertUserSchema = createInsertSchema(users).pick({
   certificationNumber: true,
 });
 
+// Create separate schemas for create vs update operations
+export const createUserSchema = insertUserSchema.extend({
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+export const updateUserSchema = insertUserSchema.partial().extend({
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+});
+
+// Secure schemas for inspector management that exclude role field
+export const updateInspectorSchema = insertUserSchema.omit({ role: true }).partial().extend({
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+});
+
 export const insertBuildingSchema = createInsertSchema(buildings).pick({
   name: true,
   address: true,
@@ -216,6 +230,8 @@ export const insertDocumentSchema = createInsertSchema(documents).pick({
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type CreateUser = z.infer<typeof createUserSchema>;
+export type UpdateUser = z.infer<typeof updateUserSchema>;
 export type Building = typeof buildings.$inferSelect;
 export type InsertBuilding = z.infer<typeof insertBuildingSchema>;
 export type Equipment = typeof equipment.$inferSelect;

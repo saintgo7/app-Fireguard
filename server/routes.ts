@@ -4,8 +4,11 @@ import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { 
   insertBuildingSchema, insertEquipmentSchema, insertInspectionSchema,
-  insertInspectionItemSchema, insertComplianceRuleSchema, insertDocumentSchema
+  insertInspectionItemSchema, insertComplianceRuleSchema, insertDocumentSchema,
+  createUserSchema, updateUserSchema, updateInspectorSchema
 } from "@shared/schema";
+import { z } from "zod";
+import bcrypt from "bcrypt";
 import { generateInspectionReport, generateComplianceReport } from "./services/pdfService";
 import {
   ObjectStorageService,
@@ -16,6 +19,27 @@ import { ObjectPermission } from "./objectAcl";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication
   setupAuth(app);
+
+  // Middleware for role-based access control
+  const requireRole = (allowedRoles: string[]) => {
+    return (req: any, res: any, next: any) => {
+      if (!req.isAuthenticated()) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      
+      if (!allowedRoles.includes(req.user?.role)) {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+      
+      next();
+    };
+  };
+
+  // Helper function to sanitize user objects (remove password)
+  const sanitizeUser = (user: any) => {
+    const { password, ...sanitizedUser } = user;
+    return sanitizedUser;
+  };
 
   // Dashboard stats
   app.get("/api/dashboard/stats", async (req, res) => {
@@ -365,14 +389,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Users API
-  app.get("/api/users", async (req, res) => {
+  // Users API (Admin only)
+  app.get("/api/users", requireRole(["admin"]), async (req, res) => {
     try {
       const users = await storage.getAllUsers();
-      res.json(users);
+      // Sanitize all user responses to remove passwords
+      const sanitizedUsers = users.map(sanitizeUser);
+      res.json(sanitizedUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  // Inspector Management API (Admin/Manager only)
+  app.get("/api/inspectors", requireRole(["admin", "manager"]), async (req, res) => {
+    try {
+      const inspectors = await storage.getUsersByRole("inspector");
+      // Sanitize all inspector responses to remove passwords
+      const sanitizedInspectors = inspectors.map(sanitizeUser);
+      res.json(sanitizedInspectors);
+    } catch (error) {
+      console.error("Error fetching inspectors:", error);
+      res.status(500).json({ error: "Failed to fetch inspectors" });
+    }
+  });
+
+  app.post("/api/inspectors", requireRole(["admin", "manager"]), async (req, res) => {
+    try {
+      // Use createUserSchema which requires password
+      const parsed = createUserSchema.parse({ ...req.body, role: "inspector" });
+      
+      // Hash password with bcrypt
+      const saltRounds = 12;
+      const hashedPassword = await bcrypt.hash(parsed.password, saltRounds);
+      
+      const inspector = await storage.createUser({
+        ...parsed,
+        password: hashedPassword,
+      });
+      
+      // Return sanitized response without password
+      res.status(201).json(sanitizeUser(inspector));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "유효하지 않은 데이터입니다.", 
+          details: error.errors 
+        });
+      }
+      console.error("Error creating inspector:", error);
+      res.status(500).json({ error: "점검원 생성에 실패했습니다." });
+    }
+  });
+
+  app.put("/api/inspectors/:id", requireRole(["admin", "manager"]), async (req, res) => {
+    try {
+      // First verify the target user exists and is an inspector
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "점검원을 찾을 수 없습니다." });
+      }
+      if (targetUser.role !== "inspector") {
+        return res.status(403).json({ error: "대상 사용자가 점검원이 아닙니다." });
+      }
+      
+      // Use updateInspectorSchema which excludes role field to prevent privilege escalation
+      const parsed = updateInspectorSchema.parse(req.body);
+      let updatePayload = { ...parsed };
+      
+      // If password is being updated, hash it with bcrypt
+      if (parsed.password) {
+        const saltRounds = 12;
+        updatePayload.password = await bcrypt.hash(parsed.password, saltRounds);
+      }
+      
+      const inspector = await storage.updateUser(req.params.id, updatePayload);
+      if (!inspector) {
+        return res.status(404).json({ error: "점검원을 찾을 수 없습니다." });
+      }
+      
+      // Return sanitized response without password
+      res.json(sanitizeUser(inspector));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "유효하지 않은 데이터입니다.", 
+          details: error.errors 
+        });
+      }
+      console.error("Error updating inspector:", error);
+      res.status(500).json({ error: "점검원 업데이트에 실패했습니다." });
+    }
+  });
+
+  app.delete("/api/inspectors/:id", requireRole(["admin", "manager"]), async (req, res) => {
+    try {
+      // First verify the target user exists and is an inspector
+      const targetUser = await storage.getUser(req.params.id);
+      if (!targetUser) {
+        return res.status(404).json({ error: "점검원을 찾을 수 없습니다." });
+      }
+      if (targetUser.role !== "inspector") {
+        return res.status(403).json({ error: "대상 사용자가 점검원이 아닙니다." });
+      }
+      
+      const deleted = await storage.deleteUser(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "점검원을 찾을 수 없습니다." });
+      }
+      res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting inspector:", error);
+      res.status(500).json({ error: "점검원 삭제에 실패했습니다." });
     }
   });
 
