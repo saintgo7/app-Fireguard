@@ -1,11 +1,14 @@
 import puppeteer from 'puppeteer';
 import type { Inspection, Building, User, InspectionItem, ComplianceRule } from "@shared/schema";
+import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage';
+import { ObjectPermission } from '../objectAcl';
 
 interface InspectionReportData {
   inspection: Inspection;
   building: Building;
   inspector: User;
   items: InspectionItem[];
+  userId: string;
 }
 
 interface ComplianceReportData {
@@ -14,6 +17,64 @@ interface ComplianceReportData {
   rules: ComplianceRule[];
   startDate?: Date;
   endDate?: Date;
+}
+
+// Helper function to securely convert signature to base64 with permission checks
+async function convertSignatureToBase64(signatureSource: string, userId: string): Promise<string | null> {
+  try {
+    // If already a data URL, return as-is
+    if (signatureSource.startsWith('data:')) {
+      return signatureSource;
+    }
+    
+    const objectStorageService = new ObjectStorageService();
+    
+    // Normalize and validate object storage path
+    const normalizedPath = objectStorageService.normalizeObjectEntityPath(signatureSource);
+    
+    // Only allow object storage paths, reject external URLs to prevent SSRF
+    if (!normalizedPath.startsWith('/objects/')) {
+      console.error('Signature source is not a valid object storage path:', signatureSource);
+      return null;
+    }
+    
+    // Get the object file securely
+    const objectFile = await objectStorageService.getObjectEntityFile(normalizedPath);
+    
+    // Check if user has permission to access this signature
+    const hasAccess = await objectStorageService.canAccessObjectEntity({
+      userId,
+      objectFile,
+      requestedPermission: ObjectPermission.READ
+    });
+    
+    if (!hasAccess) {
+      console.error('User does not have permission to access signature:', userId, normalizedPath);
+      return null;
+    }
+    
+    // Securely download the object content
+    const [metadata] = await objectFile.getMetadata();
+    const stream = objectFile.createReadStream();
+    
+    // Convert stream to buffer
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+    
+    const base64 = buffer.toString('base64');
+    const mimeType = metadata.contentType || 'image/png';
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      console.error('Signature object not found:', signatureSource);
+    } else {
+      console.error('Error securely converting signature to base64:', error);
+    }
+    return null;
+  }
 }
 
 export async function generateInspectionReport(data: InspectionReportData): Promise<Buffer> {
@@ -30,6 +91,12 @@ export async function generateInspectionReport(data: InspectionReportData): Prom
     ]
   });
   const page = await browser.newPage();
+
+  // Convert signature to base64 if provided (with secure access control)
+  let signatureBase64 = null;
+  if (data.inspection.signatureUrl) {
+    signatureBase64 = await convertSignatureToBase64(data.inspection.signatureUrl, data.userId);
+  }
 
   const html = `
     <!DOCTYPE html>
@@ -109,6 +176,46 @@ export async function generateInspectionReport(data: InspectionReportData): Prom
                 color: #6b7280; 
                 font-size: 12px; 
             }
+            .signature-section {
+                margin-top: 40px;
+                page-break-inside: avoid;
+            }
+            .signature-container {
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                padding: 20px;
+                background-color: #f9fafb;
+                text-align: center;
+                min-height: 120px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }
+            .signature-image {
+                max-width: 300px;
+                max-height: 80px;
+                border: 1px solid #e5e7eb;
+                background-color: white;
+                padding: 10px;
+                border-radius: 4px;
+            }
+            .signature-label {
+                font-size: 14px;
+                font-weight: bold;
+                color: #374151;
+                margin-top: 10px;
+            }
+            .signature-date {
+                font-size: 12px;
+                color: #6b7280;
+                margin-top: 5px;
+            }
+            .no-signature {
+                color: #9ca3af;
+                font-style: italic;
+                font-size: 14px;
+            }
         </style>
     </head>
     <body>
@@ -175,6 +282,26 @@ export async function generateInspectionReport(data: InspectionReportData): Prom
             <p>${data.inspection.notes}</p>
         </div>
         ` : ''}
+
+        ${signatureBase64 ? `
+        <div class="section signature-section">
+            <div class="section-title">점검자 서명</div>
+            <div class="signature-container">
+                <img src="${signatureBase64}" alt="점검자 서명" class="signature-image" />
+                <div class="signature-label">점검자: ${data.inspector.name}</div>
+                <div class="signature-date">서명일: ${new Date().toLocaleDateString('ko-KR')}</div>
+            </div>
+        </div>
+        ` : `
+        <div class="section signature-section">
+            <div class="section-title">점검자 서명</div>
+            <div class="signature-container">
+                <div class="no-signature">서명이 제공되지 않았습니다.</div>
+                <div class="signature-label">점검자: ${data.inspector.name}</div>
+                <div class="signature-date">생성일: ${new Date().toLocaleDateString('ko-KR')}</div>
+            </div>
+        </div>
+        `}
 
         <div class="footer">
             <p>생성일: ${new Date().toLocaleDateString('ko-KR')} | 소방점검관리 시스템</p>

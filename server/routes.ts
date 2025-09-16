@@ -507,6 +507,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Report Generation API
   app.post("/api/reports/inspection/:id", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     try {
       const inspection = await storage.getInspection(req.params.id);
       if (!inspection) {
@@ -526,6 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         building,
         inspector,
         items,
+        userId: req.user!.id,
       });
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -538,6 +543,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/reports/compliance", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     try {
       const { buildingId, startDate, endDate } = req.body;
       
