@@ -15,10 +15,34 @@ import {
   ObjectNotFoundError,
 } from "./objectStorage";
 import { ObjectPermission } from "./objectAcl";
+import multer from "multer";
+import * as XLSX from "xlsx";
+import { parseRegion, aggregateRegions, normalizeAddressKey } from "./utils/regionParser";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication
   setupAuth(app);
+
+  // Multer configuration for file uploads
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      const allowedTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+        'application/vnd.ms-excel', // .xls
+        'text/csv' // .csv
+      ];
+      
+      if (allowedTypes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only Excel (.xlsx, .xls) and CSV files are allowed'));
+      }
+    }
+  });
 
   // Middleware for role-based access control
   const requireRole = (allowedRoles: string[]) => {
@@ -111,6 +135,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting building:", error);
       res.status(500).json({ error: "Failed to delete building" });
+    }
+  });
+
+  // Buildings bulk import API
+  app.post("/api/buildings/import", requireRole(['manager', 'admin']), upload.single('file'), async (req: any, res: any) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "파일이 업로드되지 않았습니다" });
+      }
+
+      const options = {
+        mode: req.body.mode || 'upsert', // upsert or skip
+        dryRun: req.body.dryRun === 'true'
+      };
+
+      // Parse Excel file
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (jsonData.length === 0) {
+        return res.status(400).json({ error: "빈 파일입니다" });
+      }
+
+      // Extract headers and data
+      const headers = jsonData[0] as string[];
+      const rows = jsonData.slice(1) as any[][];
+
+      // Header mapping (Korean/English synonyms)
+      const headerMap = new Map<string, string>();
+      headers.forEach((header, index) => {
+        const cleanHeader = String(header).trim().toLowerCase();
+        if (cleanHeader.includes('건물명') || cleanHeader.includes('name')) {
+          headerMap.set('name', String(index));
+        } else if (cleanHeader.includes('주소') || cleanHeader.includes('address')) {
+          headerMap.set('address', String(index));
+        } else if (cleanHeader.includes('유형') || cleanHeader.includes('type')) {
+          headerMap.set('type', String(index));
+        } else if (cleanHeader.includes('층수') || cleanHeader.includes('floors')) {
+          headerMap.set('floors', String(index));
+        } else if (cleanHeader.includes('담당자') || cleanHeader.includes('contact_person') || cleanHeader.includes('contactperson')) {
+          headerMap.set('contactPerson', String(index));
+        } else if (cleanHeader.includes('연락처') || cleanHeader.includes('contact_phone') || cleanHeader.includes('contactphone') || cleanHeader.includes('phone')) {
+          headerMap.set('contactPhone', String(index));
+        }
+      });
+
+      // Validate required headers
+      if (!headerMap.has('name') || !headerMap.has('address') || !headerMap.has('type') || !headerMap.has('floors')) {
+        return res.status(400).json({ 
+          error: "필수 헤더가 누락되었습니다. 건물명, 주소, 유형, 층수가 필요합니다" 
+        });
+      }
+
+      // Process rows
+      const results = {
+        totals: { rows: rows.length, valid: 0, inserted: 0, updated: 0, skipped: 0, failed: 0 },
+        regions: [] as any[],
+        errors: [] as any[],
+        sample: [] as any[]
+      };
+
+      const validBuildings: any[] = [];
+      const regions: any[] = [];
+      const processedKeys = new Set<string>();
+
+      // Validation schema for import
+      const importBuildingSchema = insertBuildingSchema.extend({
+        floors: z.number().min(1),
+        type: z.enum(['commercial', 'residential', 'industrial'])
+      });
+
+      for (let i = 0; i < Math.min(rows.length, 10000); i++) { // Limit to 10k rows
+        const row = rows[i];
+        
+        try {
+          // Extract values from row
+          const name = row[parseInt(headerMap.get('name')!)]?.toString()?.trim();
+          const address = row[parseInt(headerMap.get('address')!)]?.toString()?.trim();
+          const type = row[parseInt(headerMap.get('type')!)]?.toString()?.trim()?.toLowerCase();
+          const floors = parseInt(row[parseInt(headerMap.get('floors')!)]);
+          const contactPerson = headerMap.has('contactPerson') ? row[parseInt(headerMap.get('contactPerson')!)]?.toString()?.trim() : undefined;
+          const contactPhone = headerMap.has('contactPhone') ? row[parseInt(headerMap.get('contactPhone')!)]?.toString()?.trim() : undefined;
+
+          if (!name || !address || !type || !floors) {
+            results.errors.push({ row: i + 2, reason: "필수 필드 누락" });
+            results.totals.failed++;
+            continue;
+          }
+
+          // Map type to English for database
+          let dbType = type;
+          if (type === '상업' || type === '상업용' || type === 'commercial') dbType = 'commercial';
+          else if (type === '주거' || type === '주거용' || type === 'residential') dbType = 'residential';
+          else if (type === '산업' || type === '산업용' || type === 'industrial') dbType = 'industrial';
+          else {
+            results.errors.push({ row: i + 2, reason: `잘못된 건물 유형: ${type}` });
+            results.totals.failed++;
+            continue;
+          }
+
+          const buildingData = {
+            name,
+            address,
+            type: dbType,
+            floors,
+            contactPerson: contactPerson || null,
+            contactPhone: contactPhone || null
+          };
+
+          // Validate with schema
+          const validatedData = importBuildingSchema.parse(buildingData);
+          results.totals.valid++;
+
+          // Check for duplicates
+          const key = normalizeAddressKey(name, address);
+          if (processedKeys.has(key)) {
+            results.totals.skipped++;
+            continue;
+          }
+          processedKeys.add(key);
+
+          // Parse region
+          const region = parseRegion(address);
+          regions.push(region);
+
+          validBuildings.push(validatedData);
+
+          // Add to sample (first 10)
+          if (results.sample.length < 10) {
+            results.sample.push({ ...validatedData, region });
+          }
+
+        } catch (error) {
+          results.errors.push({ row: i + 2, reason: error instanceof Error ? error.message : "데이터 검증 실패" });
+          results.totals.failed++;
+        }
+      }
+
+      // Aggregate regions
+      results.regions = aggregateRegions(regions);
+
+      // Process buildings if not dry run
+      if (!options.dryRun) {
+        for (const buildingData of validBuildings) {
+          try {
+            // Check if building exists (by name and address)
+            const existing = await storage.getAllBuildings();
+            const existingBuilding = existing.find(b => 
+              normalizeAddressKey(b.name, b.address) === normalizeAddressKey(buildingData.name, buildingData.address)
+            );
+
+            if (existingBuilding) {
+              if (options.mode === 'upsert') {
+                await storage.updateBuilding(existingBuilding.id, buildingData);
+                results.totals.updated++;
+              } else {
+                results.totals.skipped++;
+              }
+            } else {
+              await storage.createBuilding(buildingData);
+              results.totals.inserted++;
+            }
+          } catch (error) {
+            console.error("Database operation failed:", error);
+            results.totals.failed++;
+          }
+        }
+      }
+
+      res.json(results);
+
+    } catch (error) {
+      console.error("Error processing Excel import:", error);
+      res.status(500).json({ error: "파일 처리 중 오류가 발생했습니다" });
     }
   });
 
