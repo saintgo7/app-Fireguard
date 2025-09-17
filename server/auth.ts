@@ -22,10 +22,29 @@ async function hashPassword(password: string) {
 }
 
 async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  // Handle plain text passwords (fallback for existing users)
+  if (!stored.includes(".")) {
+    return supplied === stored;
+  }
+  
+  const parts = stored.split(".");
+  if (parts.length !== 2) {
+    return false; // Invalid format
+  }
+  
+  const [hashed, salt] = parts;
+  if (!hashed || !salt) {
+    return false; // Missing hash or salt
+  }
+  
+  try {
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch (error) {
+    console.error("Password comparison error:", error);
+    return false;
+  }
 }
 
 export function setupAuth(app: Express) {
@@ -43,10 +62,22 @@ export function setupAuth(app: Express) {
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
+      console.log(`[AUTH] Login attempt: username=${username}`);
       const user = await storage.getUserByUsername(username);
-      if (!user || !(await comparePasswords(password, user.password))) {
+      if (!user) {
+        console.log(`[AUTH] User not found: ${username}`);
+        return done(null, false);
+      }
+      
+      console.log(`[AUTH] User found: ${user.username}, password format: ${user.password.includes('.') ? 'hashed' : 'plain'}`);
+      const passwordMatch = await comparePasswords(password, user.password);
+      console.log(`[AUTH] Password match result: ${passwordMatch}`);
+      
+      if (!passwordMatch) {
+        console.log(`[AUTH] Password mismatch for: ${username}`);
         return done(null, false);
       } else {
+        console.log(`[AUTH] Login successful for: ${username}`);
         return done(null, user);
       }
     }),
