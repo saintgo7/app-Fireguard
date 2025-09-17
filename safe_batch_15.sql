@@ -1,0 +1,6 @@
+INSERT INTO buildings (name, address, type, floors, contact_person, contact_phone) 
+SELECT * FROM (VALUES ('개포리치빌', '서울특별시 강남구 선릉로14길 23', 'residential', 6, '강남소방서', '02-3445-0119'), ('디에이치퍼스티어아이파크(구.개포주공1단지)', '서울특별시 강남구 개포로 310', 'residential', 35, '강남소방서', '02-3445-0119'), ('대치푸르지오발라드', '서울특별시 강남구 개포로 407', 'residential', 12, '강남소방서', '02-3445-0119'), ('개포 더 힐(능인불교선양원 건물)', '서울특별시 강남구 논현로4길 18', 'residential', 6, '강남소방서', '02-3445-0119'), ('개원초등학교', '서울특별시 강남구 선릉로 29', 'commercial', 6, '강남소방서', '02-3445-0119'), ('개포동158-11근생건물', '서울특별시 강남구 선릉로4길 5', 'commercial', 8, '강남소방서', '02-3445-0119'), ('(3획지 상가동)개포1단지아파트 주택재건축정비사업', '서울특별시 강남구 선릉로 27', 'commercial', 5, '강남소방서', '02-3445-0119'), ('개현초등학교(구.개원2초등학교)', '서울특별시 강남구 선릉로 15', 'commercial', 6, '강남소방서', '02-3445-0119'), ('행정복지센터(개포주공1단지 공공청사)', '서울특별시 강남구 선릉로 35', 'commercial', 5, '강남소방서', '02-3445-0119'), ('개포동 660-1 공공청사', '서울특별시 강남구 선릉로 35', 'commercial', 5, '강남소방서', '02-3445-0119')) AS tmp(name, address, type, floors, contact_person, contact_phone)
+WHERE NOT EXISTS (
+  SELECT 1 FROM buildings 
+  WHERE LOWER(name) = LOWER(tmp.name) AND LOWER(address) = LOWER(tmp.address)
+);
