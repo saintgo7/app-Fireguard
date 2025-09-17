@@ -18,14 +18,14 @@ import { Plus, Search, Edit, Trash2, UserCheck } from "lucide-react";
 import { createUserSchema, updateUserSchema, type User } from "@shared/schema";
 
 // Inspector form validation schemas for create and update
-const createInspectorFormSchema = createUserSchema.omit({ id: true, createdAt: true }).extend({
+const createInspectorFormSchema = createUserSchema.extend({
   confirmPassword: z.string()
 }).refine((data) => data.password === data.confirmPassword, {
   message: "비밀번호가 일치하지 않습니다.",
   path: ["confirmPassword"],
 });
 
-const updateInspectorFormSchema = updateUserSchema.omit({ id: true, createdAt: true }).extend({
+const updateInspectorFormSchema = updateUserSchema.extend({
   confirmPassword: z.string().optional()
 }).refine((data) => {
   // Only validate password confirmation if password is provided
@@ -50,7 +50,7 @@ export default function Inspectors() {
   const [editingInspector, setEditingInspector] = useState<InspectorWithoutPassword | null>(null);
 
   // Fetch inspectors
-  const { data: inspectors = [], isLoading } = useQuery({
+  const { data: inspectors = [], isLoading } = useQuery<InspectorWithoutPassword[]>({
     queryKey: ["/api/inspectors"],
   });
 
@@ -58,10 +58,8 @@ export default function Inspectors() {
   const createMutation = useMutation({
     mutationFn: async (data: CreateInspectorFormData) => {
       const { confirmPassword, ...inspectorData } = data;
-      return await apiRequest("/api/inspectors", {
-        method: "POST",
-        body: inspectorData,
-      });
+      const res = await apiRequest("POST", "/api/inspectors", inspectorData);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inspectors"] });
@@ -89,10 +87,8 @@ export default function Inspectors() {
       if (!inspectorData.password) {
         delete inspectorData.password;
       }
-      return await apiRequest(`/api/inspectors/${id}`, {
-        method: "PUT",
-        body: inspectorData,
-      });
+      const res = await apiRequest("PUT", `/api/inspectors/${id}`, inspectorData);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inspectors"] });
@@ -116,9 +112,8 @@ export default function Inspectors() {
   // Delete inspector mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/inspectors/${id}`, {
-        method: "DELETE",
-      });
+      const res = await apiRequest("DELETE", `/api/inspectors/${id}`);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inspectors"] });
@@ -272,7 +267,7 @@ export default function Inspectors() {
                         <FormItem>
                           <FormLabel>자격증 번호 (선택사항)</FormLabel>
                           <FormControl>
-                            <Input data-testid="input-certification" placeholder="자격증 번호 입력" {...field} />
+                            <Input data-testid="input-certification" placeholder="자격증 번호 입력" {...field} value={field.value || ""} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
