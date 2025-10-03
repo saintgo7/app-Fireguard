@@ -266,6 +266,25 @@ export default function Buildings() {
     link.click();
   };
 
+  const downloadErrorFile = () => {
+    if (!importResults?.errorFileContent) return;
+
+    const byteCharacters = atob(importResults.errorFileContent);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: 'text/csv;charset=utf-8;' });
+
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'import_errors.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const getTypeLabel = (type: string) => {
     switch (type) {
       case "commercial": return "상업용";
@@ -488,7 +507,20 @@ export default function Buildings() {
 
                         {importResults.errors?.length > 0 && (
                           <div className="space-y-2">
-                            <h3 className="font-medium text-red-600">오류 목록</h3>
+                            <div className="flex justify-between items-center">
+                              <h3 className="font-medium text-red-600">오류 목록</h3>
+                              {importResults.errorFileContent && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={downloadErrorFile}
+                                  data-testid="button-download-error-file"
+                                >
+                                  <Download className="w-4 h-4 mr-2" />
+                                  실패 항목 다운로드
+                                </Button>
+                              )}
+                            </div>
                             <ScrollArea className="h-32">
                               <div className="space-y-1 text-sm">
                                 {importResults.errors.map((error: any, index: number) => (
