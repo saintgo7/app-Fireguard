@@ -432,7 +432,7 @@ export default function Inspections() {
                     <Textarea
                       id="notes"
                       data-testid="input-inspection-notes"
-                      value={formData.notes}
+                      value={formData.notes || ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                       placeholder="점검 관련 특이사항이나 요청사항을 입력하세요..."
                     />

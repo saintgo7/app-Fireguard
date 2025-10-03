@@ -216,7 +216,7 @@ export default function Documents() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getBuildingName = (buildingId?: string) => {
+  const getBuildingName = (buildingId?: string | null) => {
     if (!buildingId) return "-";
     const building = buildings?.find(b => b.id === buildingId);
     return building?.name || "알 수 없는 건물";

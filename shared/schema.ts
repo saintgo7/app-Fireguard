@@ -203,11 +203,15 @@ export const insertInspectionSchema = createInsertSchema(inspections).pick({
   scheduledDate: true,
   notes: true,
   signatureUrl: true,
+  status: true,
 }).partial({
   signatureUrl: true,
+  status: true,
 });
 
-export const insertInspectionItemSchema = createInsertSchema(inspectionItems).pick({
+export const insertInspectionItemSchema = createInsertSchema(inspectionItems, {
+  photos: z.array(z.string()).optional().nullable(),
+}).pick({
   inspectionId: true,
   equipmentId: true,
   status: true,

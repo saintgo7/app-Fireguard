@@ -586,7 +586,8 @@ export class AdvancedScheduler {
           notes: '',
           completedDate: null,
           createdAt: new Date(),
-          reportUrl: null
+          reportUrl: null,
+          signatureUrl: null
         });
       }
 
@@ -886,28 +887,4 @@ export const scheduleUtils = {
     return slots.sort((a, b) => b.confidence - a.confidence);
   },
 
-  /**
-   * Detect time conflicts between inspections on the same day
-   */
-  detectConflicts(inspections: Inspection[]): boolean {
-    if (inspections.length <= 1) return false;
-    
-    const sortedInspections = inspections
-      .filter(i => i.status !== 'cancelled')
-      .sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
-    
-    for (let i = 0; i < sortedInspections.length - 1; i++) {
-      const current = new Date(sortedInspections[i].scheduledDate);
-      const next = new Date(sortedInspections[i + 1].scheduledDate);
-      
-      // Assume each inspection takes 2 hours
-      const currentEnd = new Date(current.getTime() + 2 * 60 * 60 * 1000);
-      
-      if (currentEnd > next) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
 };

@@ -221,13 +221,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createInspectionItem(insertItem: InsertInspectionItem): Promise<InspectionItem> {
-    const { photos, ...restItem } = insertItem;
     const [item] = await db
       .insert(inspectionItems)
-      .values({
-        ...restItem,
-        photos: photos ?? []
-      })
+      .values(insertItem)
       .returning();
     return item;
   }
