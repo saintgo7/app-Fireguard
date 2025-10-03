@@ -194,8 +194,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const results = {
         totals: { rows: rows.length, valid: 0, inserted: 0, updated: 0, skipped: 0, failed: 0 },
         regions: [] as any[],
-        errors: [] as any[],
-        sample: [] as any[]
+        errors: [] as { row: number, reason: string, data: any[] }[],
+        sample: [] as any[],
+        errorFileContent: null as string | null
       };
 
       const validBuildings: any[] = [];
@@ -221,7 +222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const contactPhone = headerMap.has('contactPhone') ? row[parseInt(headerMap.get('contactPhone')!)]?.toString()?.trim() : undefined;
 
           if (!name || !address || !type || !floors) {
-            results.errors.push({ row: i + 2, reason: "필수 필드 누락" });
+            results.errors.push({ row: i + 2, reason: "필수 필드 누락", data: row });
             results.totals.failed++;
             continue;
           }
@@ -232,7 +233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           else if (type === '주거' || type === '주거용' || type === 'residential') dbType = 'residential';
           else if (type === '산업' || type === '산업용' || type === 'industrial') dbType = 'industrial';
           else {
-            results.errors.push({ row: i + 2, reason: `잘못된 건물 유형: ${type}` });
+            results.errors.push({ row: i + 2, reason: `잘못된 건물 유형: ${type}`, data: row });
             results.totals.failed++;
             continue;
           }
@@ -270,13 +271,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
         } catch (error) {
-          results.errors.push({ row: i + 2, reason: error instanceof Error ? error.message : "데이터 검증 실패" });
+          results.errors.push({ row: i + 2, reason: error instanceof Error ? error.message : "데이터 검증 실패", data: row });
           results.totals.failed++;
         }
       }
 
       // Aggregate regions
       results.regions = aggregateRegions(regions);
+
+      // Generate error file content if there are failures
+      if (results.errors.length > 0) {
+        const errorHeaders = [...headers, "실패 이유"];
+        const errorRows = results.errors.map(error => [...error.data, error.reason]);
+
+        // Create CSV content
+        const csvContent = [
+          errorHeaders.join(','),
+          ...errorRows.map(row => row.join(','))
+        ].join('\n');
+
+        results.errorFileContent = Buffer.from(csvContent).toString('base64');
+      }
 
       // Process buildings if not dry run
       if (!options.dryRun) {
