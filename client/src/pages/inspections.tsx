@@ -33,7 +33,6 @@ export default function Inspections() {
     inspectorId: "",
     type: "routine",
     scheduledDate: new Date(),
-    status: "scheduled",
     notes: ""
   });
 
@@ -126,7 +125,6 @@ export default function Inspections() {
       inspectorId: "",
       type: "routine",
       scheduledDate: new Date(),
-      status: "scheduled",
       notes: ""
     });
     setEditingInspection(null);
@@ -148,7 +146,6 @@ export default function Inspections() {
       inspectorId: inspection.inspectorId,
       type: inspection.type,
       scheduledDate: new Date(inspection.scheduledDate),
-      status: inspection.status,
       notes: inspection.notes || ""
     });
     setIsDialogOpen(true);
@@ -432,7 +429,7 @@ export default function Inspections() {
                     <Textarea
                       id="notes"
                       data-testid="input-inspection-notes"
-                      value={formData.notes}
+                      value={formData.notes ?? ""}
                       onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                       placeholder="점검 관련 특이사항이나 요청사항을 입력하세요..."
                     />

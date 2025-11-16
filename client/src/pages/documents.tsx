@@ -338,7 +338,7 @@ export default function Documents() {
                                 {getDocumentTypeLabel(doc.type)}
                               </Badge>
                             </TableCell>
-                            <TableCell>{getBuildingName(doc.buildingId)}</TableCell>
+                            <TableCell>{getBuildingName(doc.buildingId ?? undefined)}</TableCell>
                             <TableCell>{getUserName(doc.uploadedBy)}</TableCell>
                             <TableCell>
                               {format(new Date(doc.createdAt), 'yyyy.MM.dd HH:mm', { locale: ko })}

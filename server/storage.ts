@@ -134,7 +134,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBuilding(id: string): Promise<boolean> {
     const result = await db.delete(buildings).where(eq(buildings.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return result.changes > 0;
   }
 
   // Equipment
@@ -170,7 +170,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteEquipment(id: string): Promise<boolean> {
     const result = await db.delete(equipment).where(eq(equipment.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return result.changes > 0;
   }
 
   // Inspections
@@ -210,7 +210,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInspection(id: string): Promise<boolean> {
     const result = await db.delete(inspections).where(eq(inspections.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return result.changes > 0;
   }
 
   // Inspection Items
@@ -224,7 +224,7 @@ export class DatabaseStorage implements IStorage {
       .insert(inspectionItems)
       .values({
         ...restItem,
-        photos: photos ?? []
+        photos: (photos ?? []) as string[]
       })
       .returning();
     return item;
@@ -272,7 +272,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteComplianceRule(id: string): Promise<boolean> {
     const result = await db.delete(complianceRules).where(eq(complianceRules.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return result.changes > 0;
   }
 
   // Documents
@@ -312,7 +312,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDocument(id: string): Promise<boolean> {
     const result = await db.delete(documents).where(eq(documents.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return result.changes > 0;
   }
 
   // Users
@@ -331,7 +331,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUser(id: string): Promise<boolean> {
     const result = await db.delete(users).where(eq(users.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return result.changes > 0;
   }
 
   async getUsersByRole(role: string): Promise<User[]> {

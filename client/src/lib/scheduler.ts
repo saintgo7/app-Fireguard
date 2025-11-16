@@ -586,7 +586,8 @@ export class AdvancedScheduler {
           notes: '',
           completedDate: null,
           createdAt: new Date(),
-          reportUrl: null
+          reportUrl: null,
+          signatureUrl: null
         });
       }
 
@@ -889,7 +890,7 @@ export const scheduleUtils = {
   /**
    * Detect time conflicts between inspections on the same day
    */
-  detectConflicts(inspections: Inspection[]): boolean {
+  hasTimeConflicts(inspections: Inspection[]): boolean {
     if (inspections.length <= 1) return false;
     
     const sortedInspections = inspections
