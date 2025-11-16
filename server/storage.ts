@@ -8,10 +8,6 @@ import {
 import { db } from "./db";
 import { eq, desc, and, gte, lte, sql, count } from "drizzle-orm";
 import session from "express-session";
-import connectPg from "connect-pg-simple";
-import { pool } from "./db";
-
-const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
   // Users
@@ -85,7 +81,9 @@ export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.sessionStore = new PostgresSessionStore({ pool, createTableIfMissing: true });
+    // SQLite 사용 시 메모리 세션 스토어 사용 (개발 환경)
+    // 프로덕션에서는 better-sqlite3-session-store 사용 권장
+    this.sessionStore = new session.MemoryStore();
   }
 
   // Users

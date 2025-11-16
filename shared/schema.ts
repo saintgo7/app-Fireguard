@@ -1,95 +1,98 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// UUID 생성을 위한 헬퍼 함수
+const generateId = () => crypto.randomUUID();
+
 // Users table
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   role: text("role").notNull().default("inspector"), // inspector, manager, admin
   certificationNumber: text("certification_number"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Buildings table
-export const buildings = pgTable("buildings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const buildings = sqliteTable("buildings", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
   name: text("name").notNull(),
   address: text("address").notNull(),
   type: text("type").notNull(), // commercial, residential, industrial
   floors: integer("floors").notNull(),
   contactPerson: text("contact_person"),
   contactPhone: text("contact_phone"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Equipment table
-export const equipment = pgTable("equipment", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  buildingId: varchar("building_id").notNull().references(() => buildings.id),
+export const equipment = sqliteTable("equipment", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
+  buildingId: text("building_id").notNull().references(() => buildings.id),
   type: text("type").notNull(), // extinguisher, sprinkler, smoke_detector, alarm, emergency_exit
   location: text("location").notNull(),
   serialNumber: text("serial_number").unique(),
-  installationDate: timestamp("installation_date"),
-  lastInspectionDate: timestamp("last_inspection_date"),
+  installationDate: integer("installation_date", { mode: 'timestamp' }),
+  lastInspectionDate: integer("last_inspection_date", { mode: 'timestamp' }),
   status: text("status").notNull().default("active"), // active, maintenance, decommissioned
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Inspections table
-export const inspections = pgTable("inspections", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  buildingId: varchar("building_id").notNull().references(() => buildings.id),
-  inspectorId: varchar("inspector_id").notNull().references(() => users.id),
+export const inspections = sqliteTable("inspections", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
+  buildingId: text("building_id").notNull().references(() => buildings.id),
+  inspectorId: text("inspector_id").notNull().references(() => users.id),
   type: text("type").notNull(), // routine, emergency, annual
-  scheduledDate: timestamp("scheduled_date").notNull(),
-  completedDate: timestamp("completed_date"),
+  scheduledDate: integer("scheduled_date", { mode: 'timestamp' }).notNull(),
+  completedDate: integer("completed_date", { mode: 'timestamp' }),
   status: text("status").notNull().default("scheduled"), // scheduled, in_progress, completed, overdue
   reportUrl: text("report_url"),
   signatureUrl: text("signature_url"), // Digital signature for completed inspections
   notes: text("notes"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Inspection items table
-export const inspectionItems = pgTable("inspection_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  inspectionId: varchar("inspection_id").notNull().references(() => inspections.id),
-  equipmentId: varchar("equipment_id").notNull().references(() => equipment.id),
+export const inspectionItems = sqliteTable("inspection_items", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
+  inspectionId: text("inspection_id").notNull().references(() => inspections.id),
+  equipmentId: text("equipment_id").notNull().references(() => equipment.id),
   status: text("status").notNull(), // pass, fail, needs_attention
   notes: text("notes"),
-  photos: jsonb("photos").$type<string[]>().default([]),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  photos: text("photos", { mode: 'json' }).$type<string[]>().default(sql`'[]'`),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Compliance rules table
-export const complianceRules = pgTable("compliance_rules", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const complianceRules = sqliteTable("compliance_rules", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
   code: text("code").notNull().unique(),
   description: text("description").notNull(),
   frequency: integer("frequency").notNull(), // in days
   equipmentType: text("equipment_type").notNull(),
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  isActive: integer("is_active", { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Documents table
-export const documents = pgTable("documents", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+export const documents = sqliteTable("documents", {
+  id: text("id").primaryKey().$defaultFn(() => generateId()),
   title: text("title").notNull(),
   type: text("type").notNull(), // inspection_report, compliance_certificate, maintenance_record, safety_manual
-  inspectionId: varchar("inspection_id").references(() => inspections.id),
-  buildingId: varchar("building_id").references(() => buildings.id),
-  uploadedBy: varchar("uploaded_by").notNull().references(() => users.id),
+  inspectionId: text("inspection_id").references(() => inspections.id),
+  buildingId: text("building_id").references(() => buildings.id),
+  uploadedBy: text("uploaded_by").notNull().references(() => users.id),
   fileUrl: text("file_url").notNull(),
   fileSize: integer("file_size").notNull(),
   status: text("status").notNull().default("active"), // active, archived, expired
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: integer("created_at", { mode: 'timestamp' }).$defaultFn(() => new Date()).notNull(),
 });
 
 // Relations
